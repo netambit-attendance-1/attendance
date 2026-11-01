@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BFIL Attendance</title>
+<style>
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#EEF1F5; color:#1F2A3C; }
+  .card { max-width:420px; margin:40px auto; background:#fff; border-radius:12px; padding:24px;
+          box-shadow:0 2px 10px rgba(0,0,0,.08); }
+  h2 { margin:0 0 18px 0; color:#1F3864; text-align:center; }
+  label { font-size:14px; font-weight:bold; }
+  input { width:100%; box-sizing:border-box; padding:12px; font-size:16px; margin:6px 0 16px 0;
+          border:1px solid #C9D2E0; border-radius:8px; text-transform:uppercase; }
+  .btns { display:flex; gap:12px; }
+  button { flex:1; padding:14px; font-size:16px; font-weight:bold; border:none; border-radius:8px;
+           color:#fff; cursor:pointer; }
+  #inBtn { background:#1F7A3E; }
+  #outBtn { background:#8A1C1C; }
+  button:disabled { opacity:.5; cursor:default; }
+  #msg { margin-top:18px; padding:12px; border-radius:8px; font-size:15px; min-height:20px;
+         text-align:center; display:none; }
+  .ok  { display:block !important; background:#D9EAD3; color:#274E13; }
+  .err { display:block !important; background:#F4CCCC; color:#990000; }
+  .info{ display:block !important; background:#E8EEF7; color:#1F3864; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>Attendance</h2>
+  <label for="code">Employee E-code</label>
+  <input id="code" placeholder="e.g. FY26275147" autocomplete="off" autocapitalize="characters">
+  <div class="btns">
+    <button id="inBtn">Sign In</button>
+    <button id="outBtn">Sign Out</button>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/a/macros/netambit.net/s/AKfycbxLEQKFbPv9bR0t9ZkaZSw6ScOHbLXMAMhSbDio5O7ml-0hHWc48h5QXVMd4Y5FkeJ-Fg/exec';
+
+const codeInput = document.getElementById('code');
+const msg = document.getElementById('msg');
+const inBtn = document.getElementById('inBtn');
+const outBtn = document.getElementById('outBtn');
+
+// Remember the E-code on this phone so employees don't retype it
+const saved = localStorage.getItem('bfil_ecode');
+if (saved) codeInput.value = saved;
+
+function showMsg(text, type) {
+  msg.textContent = text;
+  msg.className = type;
+}
+
+function setBusy(busy) {
+  inBtn.disabled = busy;
+  outBtn.disabled = busy;
+}
+
+function getLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('This phone does not support location.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(pos.coords),
+      () => reject(new Error('Location permission denied. Allow location for this site and try again.')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  });
+}
+
+async function mark(action) {
+  const code = codeInput.value.trim();
+  if (!code) {
+    showMsg('Enter your E-code.', 'err');
+    return;
+  }
+
+  setBusy(true);
+  showMsg('Getting your location...', 'info');
+
+  try {
+    const coords = await getLocation();
+    showMsg('Recording...', 'info');
+
+    const params = new URLSearchParams({
+      code: code,
+      action: action,
+      lat: coords.latitude,
+      lng: coords.longitude
+    });
+
+    const res = await fetch(SCRIPT_URL + '?' + params.toString());
+    const data = await res.json();
+
+    localStorage.setItem('bfil_ecode', code);
+    showMsg(data.message, data.ok ? 'ok' : 'err');
+  } catch (e) {
+    showMsg(e.message || 'Could not connect. Check your internet and try again.', 'err');
+  } finally {
+    setBusy(false);
+  }
+}
+
+inBtn.addEventListener('click', () => mark('in'));
+outBtn.addEventListener('click', () => mark('out'));
+</script>
+</body>
+</html>
