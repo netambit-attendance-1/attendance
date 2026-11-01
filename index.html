@@ -6,8 +6,9 @@
 <title>BFIL Attendance</title>
 <style>
   body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#EEF1F5; color:#1F2A3C; }
-  .card { max-width:420px; margin:40px auto; background:#fff; border-radius:12px; padding:24px;
+  .card { max-width:420px; margin:30px auto; background:#fff; border-radius:12px; padding:24px;
           box-shadow:0 2px 10px rgba(0,0,0,.08); }
+  .logo { display:block; max-width:220px; width:70%; margin:0 auto 16px auto; }
   h2 { margin:0 0 18px 0; color:#1F3864; text-align:center; }
   label { font-size:14px; font-weight:bold; }
   input { width:100%; box-sizing:border-box; padding:12px; font-size:16px; margin:6px 0 16px 0;
@@ -15,39 +16,61 @@
   .btns { display:flex; gap:12px; }
   button { flex:1; padding:14px; font-size:16px; font-weight:bold; border:none; border-radius:8px;
            color:#fff; cursor:pointer; }
+  #regBtn { background:#E31B44; width:100%; }
   #inBtn { background:#1F7A3E; }
   #outBtn { background:#8A1C1C; }
   button:disabled { opacity:.5; cursor:default; }
+  .who { text-align:center; font-size:15px; margin-bottom:18px; }
+  .who b { color:#1F3864; font-size:18px; }
+  .change { display:block; width:100%; text-align:center; margin-top:16px; font-size:13px; color:#5B6B82;
+            cursor:pointer; text-decoration:underline; background:none; flex:none; padding:0; }
+  .hide { display:none !important; }
   #msg { margin-top:18px; padding:12px; border-radius:8px; font-size:15px; min-height:20px;
          text-align:center; display:none; }
   .ok  { display:block !important; background:#D9EAD3; color:#274E13; }
   .err { display:block !important; background:#F4CCCC; color:#990000; }
   .info{ display:block !important; background:#E8EEF7; color:#1F3864; }
+  .greet { font-size:20px; font-weight:bold; text-align:center; margin-bottom:10px; color:#1F3864; }
 </style>
 </head>
 <body>
 <div class="card">
+  <img class="logo" src="netambit-logo.png" alt="NetAmbit">
   <h2>Attendance</h2>
-  <label for="code">Employee E-code</label>
-  <input id="code" placeholder="e.g. FY26275147" autocomplete="off" autocapitalize="characters">
-  <div class="btns">
-    <button id="inBtn">Sign In</button>
-    <button id="outBtn">Sign Out</button>
+
+  <!-- Shown the first time only -->
+  <div id="registerView" class="hide">
+    <label for="code">Enter your E-code (from offer document)</label>
+    <input id="code" placeholder="e.g. FY26275147" autocomplete="off" autocapitalize="characters">
+    <button id="regBtn">Register this phone</button>
   </div>
+
+  <!-- Shown after registration -->
+  <div id="markView" class="hide">
+    <div class="who">Employee code: <b id="savedCode"></b></div>
+    <div class="btns">
+      <button id="inBtn">Sign In</button>
+      <button id="outBtn">Sign Out</button>
+    </div>
+    <button id="changeBtn" class="change">Change E-code</button>
+  </div>
+
   <div id="msg"></div>
 </div>
 
 <script>
 const SCRIPT_URL = 'https://script.google.com/a/macros/netambit.net/s/AKfycbxLEQKFbPv9bR0t9ZkaZSw6ScOHbLXMAMhSbDio5O7ml-0hHWc48h5QXVMd4Y5FkeJ-Fg/exec';
+const STORAGE_KEY = 'bfil_ecode';
 
+const registerView = document.getElementById('registerView');
+const markView = document.getElementById('markView');
 const codeInput = document.getElementById('code');
+const savedCodeEl = document.getElementById('savedCode');
 const msg = document.getElementById('msg');
+const regBtn = document.getElementById('regBtn');
 const inBtn = document.getElementById('inBtn');
 const outBtn = document.getElementById('outBtn');
-
-// Remember the E-code on this phone so employees don't retype it
-const saved = localStorage.getItem('bfil_ecode');
-if (saved) codeInput.value = saved;
+const changeBtn = document.getElementById('changeBtn');
 
 function showMsg(text, type) {
   msg.textContent = text;
@@ -58,6 +81,37 @@ function setBusy(busy) {
   inBtn.disabled = busy;
   outBtn.disabled = busy;
 }
+
+function refreshView() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    savedCodeEl.textContent = saved;
+    registerView.classList.add('hide');
+    markView.classList.remove('hide');
+  } else {
+    markView.classList.add('hide');
+    registerView.classList.remove('hide');
+  }
+}
+
+regBtn.addEventListener('click', () => {
+  const code = codeInput.value.trim().toUpperCase();
+  if (!code) {
+    showMsg('Enter your E-code.', 'err');
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY, code);
+  showMsg('Registered. Next time you only need to tap Sign In or Sign Out.', 'ok');
+  refreshView();
+});
+
+changeBtn.addEventListener('click', () => {
+  if (!confirm('Change the E-code saved on this phone?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  codeInput.value = '';
+  msg.style.display = 'none';
+  refreshView();
+});
 
 function getLocation() {
   return new Promise((resolve, reject) => {
@@ -106,9 +160,9 @@ function jsonp(url) {
 }
 
 async function mark(action) {
-  const code = codeInput.value.trim();
+  const code = localStorage.getItem(STORAGE_KEY);
   if (!code) {
-    showMsg('Enter your E-code.', 'err');
+    refreshView();
     return;
   }
 
@@ -128,8 +182,18 @@ async function mark(action) {
 
     const data = await jsonp(SCRIPT_URL + '?' + params.toString());
 
-    localStorage.setItem('bfil_ecode', code);
-    showMsg(data.message, data.ok ? 'ok' : 'err');
+    if (!data.ok) {
+      showMsg(data.message, 'err');
+      return;
+    }
+
+    // Greeting: Good morning on sign in, Good evening on sign out
+    const name = data.name || code;
+    const greeting = action === 'in'
+      ? 'Good morning, ' + name + '!'
+      : 'Good evening, ' + name + '!';
+
+    showMsg(greeting + ' ' + data.message, 'ok');
   } catch (e) {
     showMsg(e.message || 'Could not connect. Check your internet and try again.', 'err');
   } finally {
@@ -139,6 +203,8 @@ async function mark(action) {
 
 inBtn.addEventListener('click', () => mark('in'));
 outBtn.addEventListener('click', () => mark('out'));
+
+refreshView();
 </script>
 </body>
 </html>
