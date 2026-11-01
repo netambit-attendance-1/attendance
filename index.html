@@ -73,6 +73,38 @@ function getLocation() {
   });
 }
 
+// Loads the reply as a script (JSONP), which works across sites
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const script = document.createElement('script');
+
+    const cleanup = () => {
+      delete window[cbName];
+      script.remove();
+      clearTimeout(timer);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Server did not respond. Try again.'));
+    }, 20000);
+
+    window[cbName] = data => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('Could not connect. Check your internet and try again.'));
+    };
+
+    script.src = url + '&callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
+
 async function mark(action) {
   const code = codeInput.value.trim();
   if (!code) {
@@ -94,8 +126,7 @@ async function mark(action) {
       lng: coords.longitude
     });
 
-    const res = await fetch(SCRIPT_URL + '?' + params.toString());
-    const data = await res.json();
+    const data = await jsonp(SCRIPT_URL + '?' + params.toString());
 
     localStorage.setItem('bfil_ecode', code);
     showMsg(data.message, data.ok ? 'ok' : 'err');
